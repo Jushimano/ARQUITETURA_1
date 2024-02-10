@@ -1,0 +1,474 @@
+.section .rodata
+promptSize:   .asciz "Digite o valor de n: "
+formatIn:     .asciz "%d"
+promptM:      .asciz "Digite o valor de m: "   
+print_format: .string "%f "                      
+print_nl:     .asciz "\n"                        
+
+.section .bss
+n_size:  .space 8          # Espaço para armazenar o valor n (tamanho)
+m_size:  .space 8          # Espaço para armazenar o valor m (tamanho)
+p:       .space 8          # Espaço para ponteiro do vetor p
+q:       .space 8          # Espaço para ponteiro do vetor q
+r:       .space 8          # Espaço para ponteiro do vetor r
+a:       .space 8          # Espaço para ponteiro da matriz A
+s:       .space 8          # Espaço para ponteiro do vetor s 
+
+.section .text
+.extern printf, scanf, malloc, fflush
+
+.global alocar_vetor
+alocar_vetor:
+    # Aloca espaço na memoria para o vetor
+    push %rsi                  # Salva o ponteiro do vetor que deseja inicializar
+    imul $8, %rdi, %rdi        # Calcula tamanho para o vetor
+    call malloc
+    pop %rsi                   # Voltar o ponteiro 
+    mov %rax, (%rsi)           # Armazena o ponteiro na memória alocada
+
+    ret 
+
+.global inicializar_vetor
+inicializar_vetor:
+    mov $0, %rcx                # Inicializa o valor do contador
+    mov %rsi, %r8               # Copia o tamanho do vetor no registrador r8
+    jmp .L2                     # Pula para L2 para verificar a condição de entrada no loop
+.L3:
+    xor %rdx, %rdx              # Limpa RDX
+    mov %rcx, %rax              # RAX <- i 
+    div %r8                     # i / n (ou m) e coloca o resto em RDX, RDX tem valor de i % n (ou m)
+    mov %rdx, %rax              # RAX <- i % n(ou m)
+    cvtsi2sd %rax, %xmm0        # Move o valor de RAX para o registrador XMM0
+    cvtsi2sd %r8, %xmm1         # Move o valor de r8 (valor de n ou m) para o registrador XMM1
+    divsd %xmm1, %xmm0          # (i % n(ou m)) / n(ou m)
+    lea (%rdi, %rcx, 8), %rdx   # Calcula o deslocamento do vetor e armazene-o no registrador RSI
+    movsd %xmm0, (%rdx)         # Armazena o valor no vetor
+
+    inc %rcx                    # Incrementa o contador
+.L2:
+    cmp %r8, %rcx               # Compara o valor do contador com o tamanho do vetor
+    jl .L3                      # Entra no loop se o valor do contador é menor que o tamanho do vetor
+
+    ret
+
+.global inicializar_vetor_zeros
+inicializar_vetor_zeros:
+    # Para inicializar vetores s e q com zeros.
+    xorpd %xmm0, %xmm0          # Carrega zero para o registrador XMM0
+    mov $0, %rcx                # Inicializa o contador 
+
+.Loop:
+    cmp %rcx, %rsi              # Compara o valor do contador com o tamanho do vetor
+    jge .End                    # Se o contador é maior ou igual ao tamanho do vetor, não entra no loop
+
+    lea (%rdi, %rcx, 8), %rdx   # Calcula o deslocamento do vetor e armazene-o no registrador RDX
+    movsd %xmm0, (%rdx)         # Armazena o valor zero no vetor
+
+    inc %rcx                    # Incrementa o contador
+    jmp .Loop                   # Volta para o loop
+
+.End:
+    ret
+
+
+.global inicializar_matriz
+inicializar_matriz:
+    push %rbp
+    mov %rsp, %rbp
+
+    # Parametros:
+    # %rdi: Ponteiro para matriz
+    # %rsi: Numero de linhas (valor n) 
+    # %rdx: Numero de colunas (valor m) 
+
+    mov %rdx, %r8               # Copia o numero de colunas para o registrador R8
+
+    mov $0, %rcx                # Inicializa o contador das linhas
+
+.Linha_loop:
+    cmp %rcx, %rsi              # Compara o valor do contador com o numero de linhas (valor n)
+    je .Fim                    # Sai do loop se todas as linhas já foram processadas
+
+    mov $0, %r9                 # Inicializa o contador das colunas
+
+    imul $8, %r8, %r10         # i * m * 8
+    imul %rcx, %r10            # Calcular o deslocamento da linha
+    add %rdi, %r10             # Some o deslocamento ao ponteiro da matriz
+
+.Coluna_loop:
+    cmp %r9, %r8                # Compara o contador das colunas com o numero de colunas (valor m)
+    je .Prox_linha               # Pula para próxima linha se todas as colunas já foram processadas
+
+    mov %rcx, %rax              # RAX <- i (contador das linhas)
+    mov %r9, %rbx               # RBX <- j (contador das colunas)
+    inc %rbx                    # j + 1
+    imul %rbx, %rax             # RAX <- i * (j + 1)
+    xor %rdx, %rdx              # Limpa RDX
+    div %rsi                    # RAX (quotient), RDX (remainder) <- (i * (j + 1)) / n
+    cvtsi2sd %rdx, %xmm0        # XMM0 <- (i * (j + 1)) % n
+    cvtsi2sd %rsi, %xmm1        # XMM1 <- n 
+    divsd %xmm1, %xmm0          # ((i * (j + 1)) % n) / n
+
+    lea (%r10, %r9, 8), %rdx    # Calcula o endereço de A[i][j] e armazene-o em RDX
+    movsd %xmm0, (%rdx)         # Armazena o valor em A[i][j]
+
+    inc %r9                     # Incrementa o contador das colunas 
+    jmp .Coluna_loop              # Volta para o inicio do loop
+
+.Prox_linha:
+    inc %rcx                    # Incrementa o contador das linhas
+    jmp .Linha_loop              # Volta para o inicio do loop
+
+.Fim:
+    # Function epilogue
+    pop %rbp
+    ret
+
+.global kernel
+kernel:
+    push %rbp                    # Salva o ponteiro base
+    mov %rsp, %rbp               # Define o ponteiro base para o ponteiro de pilha atual
+
+    mov 16(%rbp), %r10           # Salva ponteiro para a matriz A em R10
+
+    # Salvando os parametros
+    mov %rdi, %r13         # Ponteiro para vetor p
+    mov %rsi, %rsi         # Ponteiro para vetor q
+    mov %rdx, %rdx         # Ponteiro para vetor r
+    mov %rcx, %r11         # Ponteiro para vetor s
+    mov %r8, %r8           # Numero de linhas (n)
+    mov %r9, %r9           # Numero de colunas (m)
+
+    xor %rcx, %rcx         # Inicializa o contador das linhas (i)
+
+.mainc_row_loop:
+    cmp %r8, %rcx         # Compara o valor do contador com o numero de linhas
+    je .mainc_end         # Se todas as linhas já foram processadas, termina o loop
+
+    xor %r12, %r12        # Inicializa o contador das colunas (j)
+
+.mainc_col_loop:
+    cmp %r9, %r12          # Compara o valor do contador com o numero de colunas
+    je .mainc_next_row     # Se todas as colunas já foram processadas, pula para próxima linha
+
+.P1:
+    # Carrega s[j] no xmm2
+    lea (%r11, %r12, 8), %rdi  
+    movsd (%rdi), %xmm2       
+
+    # Carrega r[i] no xmm1
+    lea (%rdx, %rcx, 8), %rdi  
+    movsd (%rdi), %xmm1       
+
+    # Carrega A[i][j] no xmm0
+    imul $8, %r8, %rdi       
+    imul %rcx, %rdi           # Calcula o deslocamento da linha
+    add %r10, %rdi            # Adicione o deslocamento ao ponteiro da matriz
+    lea (%rdi, %r12, 8), %rdi  # Carregue o endereço da coluna em% rdi
+    movsd (%rdi), %xmm0       
+
+    # Multiplica r[i] * A[i][j]
+    mulsd %xmm1, %xmm0        
+
+    # Soma s[j] + r[i] * A[i][j]
+    addsd %xmm0, %xmm2        
+
+    # Salva o resultado em s[j]
+    lea (%r11, %r12, 8), %rdi  # Salva o endereço do vetor s no registrador RDI
+    movsd %xmm2, (%rdi)       
+
+.P2:
+    # Salva A[i][j] em xmm0
+    imul $8, %r8, %rdi       
+    imul %rcx, %rdi           # Calcula o deslocamento da linha
+    add %r10, %rdi            # Adiciona o deslocamento ao ponteiro da matriz
+    lea (%rdi, %r12, 8), %rdi  # Carrega o endereço da coluna em rdi
+    movsd (%rdi), %xmm0       
+
+    # Salva p[j] em xmm1
+    lea (%r13, %r12, 8), %rdi  # Carregue o endereço do vetor p em rdi
+    movsd (%rdi), %xmm1       
+
+    # Multiplca A[i][j] * p[j]
+    mulsd %xmm1, %xmm0        
+
+    # Salva q[i] em xmm2 
+    lea (%rsi, %rcx, 8), %rdi  # Carrega o endereço do vetor q em rdi
+    movsd (%rdi), %xmm2       
+
+    # Soma q[i] + A[i][j] * p[j]
+    addsd %xmm0, %xmm2        
+
+    # Salva resultado em q[i]
+    lea (%rsi, %rcx, 8), %rdi  # Carrega o endereço do vetor q em rdi
+    movsd %xmm2, (%rdi)       
+
+    # Incrementa o contador de colunas 
+    inc %r12                  
+    jmp .mainc_col_loop       # Volra para o começo do loop da coluna 
+
+.mainc_next_row:
+    inc %rcx                  # Incrementa o contador de linha 
+    jmp .mainc_row_loop       # Pula para o inicio do loop das linhas 
+
+.mainc_end:
+    pop %rbp
+    ret
+
+# Função para printar os valores
+# primeiro parametro (%rdi): Ponteiro do vetor 
+# segundo parametro (%rsi): tamanho do vetor (valor de m ou de n)
+.global print_vetor
+print_vetor:
+    push %rbp                  # Salvar ponteiro base
+    mov %rsp, %rbp             # Define o ponteiro base da pilha
+
+    push %r12                  # Salva registro salvo pelo chamador
+    push %r13                  # Salva registro salvo pelo chamador
+    mov %rdi, %r12             # Copia o ponteiro do vetor para R12 
+    mov %rsi, %r13             # Copia o tamanho do vetor para o registrador R13
+
+    xor %rcx, %rcx             # Inicializar o contador 
+
+inicio_loop:
+    cmp %r13, %rcx             # Compara o valor do contador com o tamanho do vetor (n ou m)
+    je loop_fim                # Se o contador tiver o mesmo valor do tamanho do vetor, sai do loop
+
+    lea print_format(%rip), %rdi # Carrega o endereço da string de formato em rdi
+    pxor %xmm0, %xmm0           # Zere os bits superiores de xmm0
+    movsd (%r12, %rcx, 8), %xmm0 # Carrega o dobro atual do vetor em% rax
+    mov $1, %eax                # Defina o número de argumentos de ponto flutuante como 1
+    push %rcx                  # Salve o contador
+    call printf                # chama printf
+    
+    pop %rcx                   # Restaurar o contador
+    inc %rcx                   # Incrementar o contador
+    jmp inicio_loop             # Pula para o inicio do loop
+
+loop_fim:
+    pop %r13                   # Restaurar registro salvo pelo chamador
+    pop %r12                   # Restaurar registro salvo pelo chamador
+    pop %rbp                   # Restaurar ponteiro base
+    ret                        
+
+# Printar matriz
+# primeiro parametro (%rdi): Ponteiro para matriz
+# segundo parametro (%rsi): Numero de linhas (n) 
+# terceiro parametro (%rdx): Numero de colunas (m)
+.global print_matriz
+print_matriz:
+    push %rbp
+    mov %rsp, %rbp
+
+    mov %rdi, %r12          # Ponteiro da matriz
+    mov %rsi, %r13          # Numero de linhas (n)
+    mov %rdx, %r14          # Numero de colunas (m)
+
+    xor %rcx, %rcx          # contador de linhas
+
+.row_loop:
+    cmp %rcx, %r13
+    je .end_matrix
+
+    #imprimir uma linha (como vetor) e ficar nesse loop até imprimir todas as linhas da matriz
+    imul %r14, %rax         # Calcular o deslocamento da linha
+    mov %r14, %rsi          # Tamanho da linha (número de colunas)
+    lea (%r12, %rax, 8), %rdi   # Calcular o endereço da linha atual
+    sub $8, %rsp            # Alinhe a pilha com 16 bytes
+    push %rcx               # Salve o contador de linhas
+    call print_vetor       # Imprimir a linha
+    call print_linhanova      # Imprima uma nova linha após a linha
+    pop %rcx                # Restaurar o contador de linhas
+    add $8, %rsp            # Restaurar o alinhamento original da pilha
+
+    inc %rcx                # Vai para a próxima linha
+    jmp .row_loop
+
+.end_matrix:
+    pop %rbp
+    ret
+
+# Imprimir linha 
+.global print_linhanova
+print_linhanova:
+    lea print_nl(%rip), %rdi   # Carregue o endereço da string de nova linha em% rdi
+    xor %eax, %eax             # Zerar RAX
+    call printf
+    ret
+
+.global main
+main:
+
+# Imprime o prompt para pedir o tamanho n
+    sub $8, %rsp               # Alinhe a pilha com 16 bytes
+    mov $promptSize, %rdi
+    mov  $1, %rsi              
+    xor %eax, %eax            
+    call printf
+    add $8, %rsp               # Restaurar o alinhamento original da pilha
+
+# Ler o tamanho 'n' em um registro
+    sub $8, %rsp               # Alinhe a pilha com 16 bytes
+    lea formatIn(%rip), %rdi   
+    lea n_size(%rip), %rsi     
+    call scanf
+    add $8, %rsp               # Restaurar o alinhamento original da pilha
+
+    # imprimir nova linha
+    call print_linhanova
+
+# Imprime o prompt para pedir o tamanho m
+    sub $8, %rsp               # Alinhe a pilha com 16 bytes
+    mov $promptM, %rdi
+    mov  $1, %rsi              
+    xor %eax, %eax             
+    call printf
+    add $8, %rsp               # Restaurar o alinhamento original da pilha
+
+    # Para ler o valor de m
+    sub $8, %rsp               # Alinhe a pilha com 16 bytes
+    lea formatIn(%rip), %rdi  
+    lea m_size(%rip), %rsi     
+    call scanf
+    add $8, %rsp               # Restaurar o alinhamento original da pilha
+
+    # imprimir nova linha
+    call print_linhanova
+
+
+# Alocar espaço na memória para vetor r 
+    mov n_size(%rip), %rdi     # Carrega o tamanho do vetor (n) 
+    lea r(%rip), %rsi         # Carrega o ponteiro do vetor r
+    call alocar_vetor
+
+# Alocar espaço na memória para vetor q
+    mov n_size(%rip), %rdi     # Carrega o tamanho do vetor (n)
+    lea q(%rip), %rsi         # Carrega o ponteiro do vetor q
+    call alocar_vetor
+
+# Alocar espaço na memória para vetor p
+    mov m_size(%rip), %rdi     # Carrega o tamanho do vetor (m)
+    lea p(%rip), %rsi         # Carrega o ponteiro do vetor p
+    call alocar_vetor
+
+# Alocar espaço na memória para vetor s
+    mov m_size(%rip), %rdi     # Carrega o tamanho do vetor (m)
+    lea s(%rip), %rsi         # Carrega o ponteiro do vetor s
+    call alocar_vetor
+
+# Alocar espaço na memória para matriz A
+    mov n_size(%rip), %rdi        # Carrega o numero de linhas (n) 
+    imul m_size(%rip), %rdi       
+    lea a(%rip), %rsi             # Carrega o ponteiro da matriz 
+    call alocar_vetor             
+    mov %rax, a(%rip)             
+
+# Inicializar valores do vetor p 
+    mov p(%rip), %rdi         # Carrega o ponteiro do vetor p 
+    mov m_size(%rip), %rsi     # Carrega o tamanho do vetor (m) 
+    call inicializar_vetor
+
+# Inicializar valores do vetor r
+    mov r(%rip), %rdi         # Carrega o ponteiro do vetor r
+    mov n_size(%rip), %rsi     # Carrega o tamanho do vetor (n)
+    call inicializar_vetor
+
+# Inicializar valores do vetor s
+    mov s(%rip), %rdi         # Carrega o ponteiro do vetor s
+    mov m_size(%rip), %rsi     # Carrega o tamanho do vetor (m)
+    call inicializar_vetor_zeros
+
+# Inicializar valores do vetor q
+    mov q(%rip), %rdi         # Carrega o ponteiro do vetor q
+    mov n_size(%rip), %rsi     # Carrega o tamanho do vetor (n)
+    call inicializar_vetor_zeros
+
+# Inicializar valores da matriz A
+    mov a(%rip), %rdi          # Carrega o ponteiro da matriz A
+    mov n_size(%rip), %rsi     # Carrega o numero de linhas (n) 
+    mov m_size(%rip), %rdx     # Carrega o numero de colunas (m) 
+    call inicializar_matriz           
+
+# Imprimir valores do vetor p 
+    mov p(%rip), %rdi         # Carrega o ponteiro do vetor p 
+    mov m_size(%rip), %rsi     # Carrega o tamanho do vetor (m) 
+    call print_vetor
+
+# Imprime nova linha
+    call print_linhanova
+
+# Imprimir valores do vetor r
+    mov r(%rip), %rdi         # Carrega o ponteiro do vetor r
+    mov n_size(%rip), %rsi     # Carrega o tamanho do vetor (n)
+    call print_vetor
+
+# Imprime nova linha
+    call print_linhanova
+
+# Imprimir valores do vetor s
+    mov s(%rip), %rdi         # Carrega o ponteiro do vetor s
+    mov m_size(%rip), %rsi     # Carrega o tamanho do vetor (m)
+    call print_vetor
+
+# Imprime nova linha
+    call print_linhanova
+
+# Imprimir valores do vetor q
+    mov q(%rip), %rdi         # Carrega o ponteiro do vetor q
+    mov n_size(%rip), %rsi     # Carrega o tamanho do vetor (n)
+    call print_vetor
+
+# Imprime duas novas linhas
+    call print_linhanova
+    call print_linhanova
+
+# Imprimir valores da matriz A
+    mov a(%rip), %rdi          # Carrega o ponteiro da matriz A
+    mov n_size(%rip), %rsi     # Carrega o numero de linhas (n) 
+    mov m_size(%rip), %rdx     # Carrega o numero de colunas (m) 
+    call print_matriz          
+
+# Imprimir nova linha
+    call print_linhanova
+
+# Chama a função kernel
+    mov p(%rip), %rdi          # Carrega o ponteiro do vetor p 
+    mov q(%rip), %rsi          # Carrega o ponteiro do vetor q 
+    mov r(%rip), %rdx          # Carrega o ponteiro do vetor r
+    mov s(%rip), %rcx           # Carrega o ponteiro do vetor s
+    mov n_size(%rip), %r8      # Carrega o numero de linhas (n)
+    mov m_size(%rip), %r9     # Carrega o numero de colunas (m)
+    mov a(%rip), %rax          # Carrega o ponteiro do vetor A
+    push %rax                  # Salva o ponteiro da matriz A 
+    call kernel   
+    pop %rax                   # Restaura o ponteiro da matriz A
+
+# Imprimir valores do vetor s
+    mov s(%rip), %rdi         # Carrega o ponteiro do vetor s
+    mov m_size(%rip), %rsi     # Carrega o tamanho do vetor (m)
+    call print_vetor
+
+# Imprimir nova linha 
+    call print_linhanova
+
+# Imprimir valores do vetor q
+    mov q(%rip), %rdi         # Carrega o ponteiro do vetor q
+    mov n_size(%rip), %rsi     # Carrega o tamanho do vetor (n)
+    call print_vetor
+
+# Imprimir nova linha 
+    call print_linhanova
+
+# Flush the output
+xor %rdi, %rdi              # Passar NULL para fflush libera todos os fluxos de saída abertos
+call fflush
+
+
+# Pular para o final do codigo
+    jmp exit
+
+exit:
+    #Termina programa
+    mov $60, %rax  # sys_exit número do syscall
+    xor %rdi, %rdi  # Status de saída 0, indicando sucesso. Use outros valores para erros.
+    syscall         

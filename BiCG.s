@@ -349,27 +349,6 @@ main:
     call scanf
     add $8, %rsp               # Restore original stack alignment
 
-# Para ler o valor de n
-    sub $8, %rsp               # Align stack to 16 bytes
-    lea formatIn(%rip), %rdi   # Load formatIn for scanf
-    lea n_size(%rip), %rsi     # Pass address of the top of stack for input
-    call scanf
-    add $8, %rsp               # Restore original stack alignment
-
-# Para ler o valor de m
-    sub $8, %rsp               # Align stack to 16 bytes
-    lea formatInM(%rip), %rdi  # Load formatInM for scanf
-    lea m_size(%rip), %rsi     # Pass address of the top of stack for input
-    call scanf
-    add $8, %rsp               # Restore original stack alignment
-
-# Read the size 'n' into a register
-    sub $8, %rsp               # Align stack to 16 bytes
-    lea formatIn(%rip), %rdi   # Load format for scanf
-    lea n_size(%rip), %rsi     # Pass address of the top of stack for input
-    call scanf
-    add $8, %rsp               # Restore original stack alignment
-
 # Allocate memory for r
     mov n_size(%rip), %rdi     # Load the size of the vector
     lea r(%rip), %rsi         # Load the pointer to the vector
@@ -379,6 +358,14 @@ main:
     mov n_size(%rip), %rdi     # Load the size of the vector
     lea q(%rip), %rsi         # Load the pointer to the vector
     call alloc_vector
+
+# Print the prompt for the size of the vector
+    sub $8, %rsp               # Align stack to 16 bytes
+    mov $promptM, %rdi
+    mov  $1, %rsi              # Writing to %rsi zero extends to RSI.
+    xor %eax, %eax             # Zeroing EAX is efficient way to clear AL.
+    call printf
+    add $8, %rsp               # Restore original stack alignment
 
 # Para ler o valor de m
     sub $8, %rsp               # Align stack to 16 bytes
@@ -514,4 +501,3 @@ exit:
     mov $60, %rax  # sys_exit syscall number
     xor %rdi, %rdi  # Exit status 0, indicating success. Use other values for errors.
     syscall         # Invoke the kernel
-    

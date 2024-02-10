@@ -15,7 +15,7 @@ a:       .space 8          # Reserve space for the pointer to the matrix
 s:       .space 8          # Reserve space for the pointer to the vector 
 
 .section .text
-.extern printf, scanf, malloc
+.extern printf, scanf, malloc, fflush
 
 .global alloc_vector
 alloc_vector:
@@ -533,6 +533,11 @@ main:
 
 # Print new line
     call print_newline
+
+# Flush the output
+xor %rdi, %rdi              # Passing NULL to fflush flushes all open output streams
+call fflush
+
 
 # Jump to the exit code
     jmp exit
